@@ -1,7 +1,5 @@
-use super::Cardinal;
-use super::{Coordonnee, Latitude, Longitude};
+use super::{Latitude, Longitude, Cardinal};
 use super::{East, North, South, West};
-use core::borrow::Borrow;
 use std::fmt;
 
 mod errors;
@@ -9,13 +7,18 @@ mod errors;
 use errors::ParseResult;
 use errors::ItemErrorKind;
 
+mod parse;
+
 mod str_to_items;
 use str_to_items::StrToItems;
 
+mod scan;
+
 #[derive(Debug, PartialEq)]
-pub enum Item<'a> {
-    Slice(&'a str),
-    Anchor(Anchor),
+pub enum ParseItem {
+    Char(char),
+    NumFix(Anchor),
+    Card(Anchor),
     Error(ItemErrorKind),
 }
 

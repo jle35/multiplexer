@@ -1,16 +1,16 @@
 use super::Anchor;
-use super::Item;
+use super::ParseItem;
 
 use super::errors::ItemErrorKind;
 use super::errors::{MISSING_ANCHOR};
 
 pub struct StrToItems<'a> {
     s: &'a str,
-    items: Vec<Item<'a>>,
+    items: Vec<ParseItem>,
 }
 
 impl<'a> StrToItems<'a> {
-    fn new(s: &'a str) -> StrToItems<'a> {
+    pub fn new(s: &'a str) -> StrToItems<'a> {
         StrToItems {
             s: s,
             items: Vec::new(),
@@ -19,9 +19,9 @@ impl<'a> StrToItems<'a> {
 }
 
 impl<'a> Iterator for StrToItems<'a> {
-    type Item = Item<'a>;
+    type Item = ParseItem;
 
-    fn next(&mut self) -> Option<Item<'a>> {
+    fn next(&mut self) -> Option<ParseItem> {
         match self.s.chars().next() {
             // End
             None => None,
@@ -35,27 +35,27 @@ impl<'a> Iterator for StrToItems<'a> {
                         // move next char (utf8 size in case of no 1 byte)
                         self.s = &self.s[c.len_utf8()..];
                         let item = match c {
-                            'D' => Item::Anchor(Anchor::Degrees),
-                            'M' => Item::Anchor(Anchor::MinutesInt),
-                            'm' => Item::Anchor(Anchor::MinutesFloat),
-                            'S' => Item::Anchor(Anchor::SecondsInt),
-                            's' => Item::Anchor(Anchor::SecondsFloat),
-                            'C' => Item::Anchor(Anchor::CardinalShortUp),
-                            'c' => Item::Anchor(Anchor::CardinalShortLower),
-                            'A' => Item::Anchor(Anchor::CardinalCap),
-                            'O' => Item::Anchor(Anchor::CardinalUp),
-                            'o' => Item::Anchor(Anchor::CardinalLower),
-                            e => Item::Error(ItemErrorKind::UNKNOWN_ANCHOR(e)),
+                            'D' => ParseItem::NumFix(Anchor::Degrees),
+                            'M' => ParseItem::NumFix(Anchor::MinutesInt),
+                            'm' => ParseItem::NumFix(Anchor::MinutesFloat),
+                            'S' => ParseItem::NumFix(Anchor::SecondsInt),
+                            's' => ParseItem::NumFix(Anchor::SecondsFloat),
+                            'C' => ParseItem::Card(Anchor::CardinalShortUp),
+                            'c' => ParseItem::Card(Anchor::CardinalShortLower),
+                            'A' => ParseItem::Card(Anchor::CardinalCap),
+                            'O' => ParseItem::Card(Anchor::CardinalUp),
+                            'o' => ParseItem::Card(Anchor::CardinalLower),
+                            e => ParseItem::Error(ItemErrorKind::UnknownAnchor(e)),
                         };
                         Some(item)
                     }
                     // Error because previous char is %
-                    None => return Some(Item::Error(MISSING_ANCHOR)),
+                    None => return Some(ParseItem::Error(MISSING_ANCHOR)),
                 }
             }
-            Some(_) => {
+            Some(c) => {
                 self.s = &self.s[1..];
-                return Some(Item::Slice("."));
+                return Some(ParseItem::Char(c));
             }
         }
     }
@@ -66,7 +66,7 @@ use super::*;
 
 #[test]
 fn test_strtoitems() {
-    fn parse_and_collect(s: &str) -> Vec<Item> {
+    fn parse_and_collect(s: &str) -> Vec<ParseItem> {
         let items = StrToItems::new(s);
 
         let items = items.map(|i| Some(i) );
@@ -75,33 +75,36 @@ fn test_strtoitems() {
             .unwrap()
     }
     assert_eq!(parse_and_collect(""), []);
-    assert_eq!(parse_and_collect("%P"), [Item::Error(ItemErrorKind::UNKNOWN_ANCHOR('P'))]);
-    assert_eq!(parse_and_collect("%4"), [Item::Error(ItemErrorKind::UNKNOWN_ANCHOR('4'))]);
-    assert_ne!(parse_and_collect("%U"), [Item::Error(ItemErrorKind::UNKNOWN_ANCHOR('S'))]);
+    assert_eq!(parse_and_collect("%P"), [ParseItem::Error(ItemErrorKind::UnknownAnchor('P'))]);
+    assert_eq!(parse_and_collect("%4"), [ParseItem::Error(ItemErrorKind::UnknownAnchor('4'))]);
+    assert_ne!(parse_and_collect("%U"), [ParseItem::Error(ItemErrorKind::UnknownAnchor('S'))]);
 
-    assert_eq!(parse_and_collect("%D"), [Item::Anchor(Anchor::Degrees)]);
-    assert_eq!(parse_and_collect("%M"), [Item::Anchor(Anchor::MinutesInt)]);
+    assert_eq!(parse_and_collect("%D"), [ParseItem::NumFix(Anchor::Degrees)]);
+    assert_eq!(parse_and_collect("%M"), [ParseItem::NumFix(Anchor::MinutesInt)]);
     assert_eq!(
         parse_and_collect("%m"),
-        [Item::Anchor(Anchor::MinutesFloat)]
+        [ParseItem::NumFix(Anchor::MinutesFloat)]
     );
-    assert_eq!(parse_and_collect("%S"), [Item::Anchor(Anchor::SecondsInt)]);
+    assert_eq!(parse_and_collect("%S"), [ParseItem::NumFix(Anchor::SecondsInt)]);
     assert_eq!(
         parse_and_collect("%s"),
-        [Item::Anchor(Anchor::SecondsFloat)]
+        [ParseItem::NumFix(Anchor::SecondsFloat)]
     );
     assert_eq!(
         parse_and_collect("%C"),
-        [Item::Anchor(Anchor::CardinalShortUp)]
+        [ParseItem::Card(Anchor::CardinalShortUp)]
     );
     assert_eq!(
         parse_and_collect("%c"),
-        [Item::Anchor(Anchor::CardinalShortLower)]
+        [ParseItem::Card(Anchor::CardinalShortLower)]
     );
-    assert_eq!(parse_and_collect("%A"), [Item::Anchor(Anchor::CardinalCap)]);
-    assert_eq!(parse_and_collect("%O"), [Item::Anchor(Anchor::CardinalUp)]);
+    assert_eq!(parse_and_collect("%A"), [ParseItem::Card(Anchor::CardinalCap)]);
+    assert_eq!(parse_and_collect("%O"), [ParseItem::Card(Anchor::CardinalUp)]);
     assert_eq!(
         parse_and_collect("%o"),
-        [Item::Anchor(Anchor::CardinalLower)]
+        [ParseItem::Card(Anchor::CardinalLower)]
     );
+
+    assert_eq!(parse_and_collect("%Av"), [ParseItem::Card(Anchor::CardinalCap), ParseItem::Char('v')]);
+    assert_ne!(parse_and_collect("%Av"), [ParseItem::Card(Anchor::CardinalCap), ParseItem::Char('v'), ParseItem::Char('e')]);
 }
